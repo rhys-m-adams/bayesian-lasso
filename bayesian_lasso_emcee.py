@@ -27,21 +27,20 @@ def ll(A, x, y, l):
 
 
 def bayesian_lasso(A,y, penalty, start):
-    #import pymc3
     nwalkers = 250
-    num_params = A.shape[1]+1
-    #p0 = start + np.random.randn(nwalkers,A.shape[1])
-    inv_sigma = 1./np.mean((A.dot(start) - y)**2)
-    p0 = np.hstack((np.log(inv_sigma),start)) + np.hstack((np.log(inv_sigma),start+1e-8)) * np.random.randn(nwalkers,num_params)
+    num_params = A.shape[1]+1 #need to find parameters plus a variance term for the SSE Gaussian term
+    inv_sigma = 1./np.mean((A.dot(start) - y)**2)/A.shape[0]**2 #pick as starting guess for sigma the MSE * number of samples
+    p0 = np.hstack((np.log(inv_sigma),start)) + np.hstack((np.log(inv_sigma),start+1e-8)) * np.random.randn(nwalkers,num_params)#choose a wide variety of starting points
     
     sampler = emcee.EnsembleSampler(nwalkers, num_params, lambda x:ll(A,x,y,penalty))
-    pos, prob, state = sampler.run_mcmc(p0, int(10000*start.shape[0]/44.))
+    pos, prob, state = sampler.run_mcmc(p0, int(10000*start.shape[0]/44.))#burn in
     sampler.reset()
-    pos, prob, state = sampler.run_mcmc(pos, int(20000*start.shape[0]/44.))
+    pos, prob, state = sampler.run_mcmc(pos, int(20000*start.shape[0]/44.))#fit
+    #find sampling rate for 0.1 autocorrelation
     autocorr = np.array([[pearsonr(sampler.flatchain[0:-jj:jj,ii],sampler.flatchain[jj::jj,ii])[0] for jj in range(1,2000)] for ii in range(num_params)])
-    sample_rate = []
+    sample_rate = [] 
     for ac in autocorr:
-        ind = np.where(ac<0.3)
+        ind = np.where(ac < 0.1)
         if ind[0].shape[0]:
             ind = ind[0][0]
         else:
@@ -49,6 +48,7 @@ def bayesian_lasso(A,y, penalty, start):
         myf = np.linalg.lstsq(np.array([range(1,ind+1)]).T, np.log(ac[:ind]))[0]
         sample_rate.append(int(np.ceil(-np.log(10)/myf)))
 
+    #calculate the statistics with the sampling rate and return
     mu = []
     sigma = []
     p = []
@@ -57,5 +57,4 @@ def bayesian_lasso(A,y, penalty, start):
         sigma.append(np.std(sampler.flatchain[::sample_rate[ii],ii], axis = 0))
         p.append(np.mean(np.multiply(sampler.flatchain[::sample_rate[ii],ii], np.sign(mu[ii])) <= 0, axis=0))
     
-    #print np.exp(mu[0])
     return np.array(mu[1:]), np.array(sigma[1:]), np.array(p[1:]), np.array(sample_rate[1:])
