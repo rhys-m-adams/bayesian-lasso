@@ -1,8 +1,6 @@
 import emcee
-from scipy.stats import norm
 import numpy as np
 import pdb
-import sys
 from scipy.stats import pearsonr
 
 '''
@@ -10,34 +8,30 @@ This implementation can by found in
 The Bayesian Lasso
 Trevor Park and George Casella
 '''
-def lnprob(A, x, y, inv_sigma):
-    model = A.dot(x)
-    lp = -0.5 * sum((model - y)**2 * inv_sigma) + ((A.shape[0] + A.shape[1] - 1) / 2 + 1) * np.log(inv_sigma)
-    return lp
-
-def lnprior(x, l):
-    # The parameters are stored as a vector of values, so unpack them
-    lp =       - sum(np.abs(x)) * l
-    return lp
 
 def ll(A, x, y, l):
     inv_sigma = np.exp(x[0])
     x = x[1:]
-    return lnprior(x, l * np.sqrt(inv_sigma)) + lnprob(A, x, y, inv_sigma)
+    model = A.dot(x)
+    return  - sum(np.abs(x)) * l * np.sqrt(inv_sigma) + -0.5 * sum((model - y)**2 * inv_sigma) + ((A.shape[0] + A.shape[1] - 1) / 2 + 1) * np.log(inv_sigma)
 
 
-def bayesian_lasso(A,y, penalty, start):
-    nwalkers = 250
+def bayesian_lasso(A,y, penalty, start, burn_in=0, num_iterations=0, nwalkers=250, autocorr_scan = 2000):
+    if burn_in == 0:
+        burn_in = int(10000*start.shape[0]/44.)
+    if num_iterations == 0:
+        num_iterations = int(20000*start.shape[0]/44.)
+
     num_params = A.shape[1]+1 #need to find parameters plus a variance term for the SSE Gaussian term
     inv_sigma = 1./np.mean((A.dot(start) - y)**2)/A.shape[0]**2 #pick as starting guess for sigma the MSE * number of samples
     p0 = np.hstack((np.log(inv_sigma),start)) + np.hstack((np.log(inv_sigma),start+1e-8)) * np.random.randn(nwalkers,num_params)#choose a wide variety of starting points
     
     sampler = emcee.EnsembleSampler(nwalkers, num_params, lambda x:ll(A,x,y,penalty))
-    pos, prob, state = sampler.run_mcmc(p0, int(10000*start.shape[0]/44.))#burn in
+    pos, prob, state = sampler.run_mcmc(p0, burn_in)#burn in
     sampler.reset()
-    pos, prob, state = sampler.run_mcmc(pos, int(20000*start.shape[0]/44.))#fit
+    pos, prob, state = sampler.run_mcmc(pos, num_iterations)#fit
     #find sampling rate for 0.1 autocorrelation
-    autocorr = np.array([[pearsonr(sampler.flatchain[0:-jj:jj,ii],sampler.flatchain[jj::jj,ii])[0] for jj in range(1,2000)] for ii in range(num_params)])
+    autocorr = np.array([[pearsonr(sampler.flatchain[0:-jj:jj,ii],sampler.flatchain[jj::jj,ii])[0] for jj in range(1,autocorr_scan)] for ii in range(num_params)])
     sample_rate = [] 
     for ac in autocorr:
         ind = np.where(ac < 0.1)
