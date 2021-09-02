@@ -11,7 +11,7 @@ def lasso(X,y, num_iter, penalty):
         #eval('x%i=X[:, %i]'%(ii,ii))
         in_str.extend(['Laplace(\'x%i\', 0, b=%f) * X[:,%i] '%(ii, penalty, ii)])
     in_str = '+'.join(in_str)
-    print in_str
+    print(in_str)
     
     with Model() as model:
         # Laplacian prior only works with Metropolis sampler
@@ -47,7 +47,7 @@ def test():
     y = 10 * x1 + 10 * x2 + 0.1 * x3
     X = np.array([x1,x2,x3]).T
     trace, C, delta = lasso(X,y, 10000, 1./sqrt(2))
-    print delta
+    print(delta)
     plt.figure(figsize=(7, 7))
     traceplot(trace)
     plt.tight_layout()
